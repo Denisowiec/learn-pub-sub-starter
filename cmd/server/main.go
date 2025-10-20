@@ -1,10 +1,10 @@
 package main
 
 import (
+	"fmt"
 	"log"
-	"os"
-	"os/signal"
 
+	"github.com/Denisowiec/learn-pub-sub-starter/internal/gamelogic"
 	"github.com/Denisowiec/learn-pub-sub-starter/internal/pubsub"
 	"github.com/Denisowiec/learn-pub-sub-starter/internal/routing"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -28,13 +28,40 @@ func main() {
 		log.Fatal("Error creating a AMQP channel: ", err)
 	}
 
-	err = pubsub.PublishJSON(pauseChan, string(routing.ExchangePerilDirect), string(routing.PauseKey), routing.PlayingState{IsPaused: true})
+	_, _, err = pubsub.DeclareAndBind(
+		rabbitConn,
+		routing.ExchangePerilTopic,
+		routing.GameLogSlug,
+		fmt.Sprintf("%s.*", routing.GameLogSlug),
+		pubsub.Durable)
 	if err != nil {
-		log.Println("Failed to publish on the pauseChan: ", err)
+		log.Fatal("Couldn't establish a queue for the game logs")
 	}
 
-	signalChan := make(chan os.Signal, 1)
-	signal.Notify(signalChan, os.Interrupt)
-	<-signalChan
-	log.Println("Recieved interrupt signal. Exiting...")
+	gamelogic.PrintServerHelp()
+	// REPL loop
+	repl := true
+	for repl {
+		input := gamelogic.GetInput()
+
+		if len(input) == 0 {
+			continue
+		}
+
+		if input[0] == "pause" {
+			log.Println("Sending a pause message to RabbitMQ...")
+
+			err = pubsub.PublishJSON(pauseChan, string(routing.ExchangePerilDirect), string(routing.PauseKey), routing.PlayingState{IsPaused: true})
+			if err != nil {
+				log.Println("Failed to publish on the pauseChan: ", err)
+				continue
+			}
+			continue
+		}
+		if input[0] == "quit" {
+			log.Println("Server exiting...")
+			repl = false
+		}
+	}
+
 }
