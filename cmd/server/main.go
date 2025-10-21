@@ -47,8 +47,8 @@ func main() {
 		if len(input) == 0 {
 			continue
 		}
-
-		if input[0] == "pause" {
+		switch input[0] {
+		case "pause":
 			log.Println("Sending a pause message to RabbitMQ...")
 
 			err = pubsub.PublishJSON(pauseChan, string(routing.ExchangePerilDirect), string(routing.PauseKey), routing.PlayingState{IsPaused: true})
@@ -57,10 +57,24 @@ func main() {
 				continue
 			}
 			continue
-		}
-		if input[0] == "quit" {
+		case "resume":
+			log.Println("Sending a resume message to RabbitMQ...")
+
+			err = pubsub.PublishJSON(pauseChan, string(routing.ExchangePerilDirect), string(routing.PauseKey), routing.PlayingState{IsPaused: false})
+			if err != nil {
+				log.Println("Failed to publish on the pauseChan: ", err)
+				continue
+			}
+			continue
+		case "quit":
 			log.Println("Server exiting...")
 			repl = false
+		case "":
+			continue
+		default:
+			continue
+		}
+		if input[0] == "quit" {
 		}
 	}
 

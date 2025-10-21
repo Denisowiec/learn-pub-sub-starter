@@ -12,6 +12,40 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+func declareBindSubscribe[T any](
+	conn *amqp.Connection,
+	exchange,
+	queueName,
+	key string,
+	queueType pubsub.SimpleQueueType,
+	handler func(T),
+) error {
+	_, _, err := pubsub.DeclareAndBind(
+		conn,
+		exchange,
+		queueName,
+		key,
+		queueType,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	err = pubsub.SubscribeJSON(
+		conn,
+		exchange,
+		queueName,
+		key,
+		queueType,
+		handler,
+	)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
 func main() {
 	fmt.Println("Starting Peril client...")
 	// Establish connection to the RabbitMQ server
@@ -23,6 +57,12 @@ func main() {
 	}
 
 	defer rabbitConn.Close()
+
+	channel, err := rabbitConn.Channel()
+	if err != nil {
+		log.Fatal("Error establishing a RabbitMQ channel: ", err)
+	}
+
 	log.Println("Connection to RabbitMQ was successful.")
 
 	// Here starts actual client logic
@@ -31,18 +71,22 @@ func main() {
 		log.Fatal(err)
 	}
 
-	_, _, err = pubsub.DeclareAndBind(
-		rabbitConn,
-		routing.ExchangePerilDirect,
-		fmt.Sprintf("%s.%s", routing.PauseKey, username),
-		routing.PauseKey,
-		pubsub.Transient)
-
-	if err != nil {
-		log.Fatal("Unable to declare a rabbitMQ queue: ", err)
-	}
-
 	state := gamelogic.NewGameState(username)
+
+	// Subscribing to the pause feature
+	pauseQName := fmt.Sprintf("%s.%s", routing.PauseKey, username)
+	err = declareBindSubscribe(rabbitConn, routing.ExchangePerilDirect, pauseQName, routing.PauseKey, pubsub.Transient, HandlerPause(state))
+	if err != nil {
+		log.Fatal("Unable to subscribe to a RabbitMQ queue: ", err)
+	}
+	// Subscribing to the army move queue
+	armyMoveQName := fmt.Sprintf("%s.%s", routing.ArmyMovesPrefix, username)
+	armyMoveKey := fmt.Sprintf("%s.*", routing.ArmyMovesPrefix)
+
+	err = declareBindSubscribe(rabbitConn, routing.ExchangePerilTopic, armyMoveQName, armyMoveKey, pubsub.Transient, HandlerMove(state))
+	if err != nil {
+		log.Fatal("Unable to subscribe to a RabbitMQ queue: ", err)
+	}
 
 	repl := true
 	for repl {
@@ -56,11 +100,13 @@ func main() {
 				continue
 			}
 		case "move":
-			_, err = state.CommandMove(input)
+			am, err := state.CommandMove(input)
+			pubsub.PublishJSON(channel, routing.ExchangePerilTopic, armyMoveKey, am)
 			if err != nil {
 				log.Println(err)
 				continue
 			}
+			log.Println("Move published successfully")
 			fmt.Println("Move successful")
 		case "status":
 			state.CommandStatus()
