@@ -15,6 +15,14 @@ const (
 	Transient SimpleQueueType = iota
 )
 
+type AckType int
+
+const (
+	Ack         AckType = iota
+	NackRequeue AckType = iota
+	NackDiscard AckType = iota
+)
+
 func PublishJSON[T any](ch *amqp.Channel, exchange, key string, val T) error {
 	dat, err := json.Marshal(val)
 	if err != nil {
@@ -41,7 +49,10 @@ func createQueue(conn *amqp.Connection, queueName string, queueType SimpleQueueT
 	autoDel := (queueType == Transient)
 	excl := autoDel
 
-	queue, err := channel.QueueDeclare(queueName, dur, autoDel, excl, false, nil)
+	params := amqp.Table{}
+	params["x-dead-letter-exchange"] = "peril_dlx"
+
+	queue, err := channel.QueueDeclare(queueName, dur, autoDel, excl, false, params)
 	if err != nil {
 		return nil, amqp.Queue{}, err
 	}
@@ -54,7 +65,7 @@ func SubscribeJSON[T any](
 	queueName,
 	key string,
 	queueType SimpleQueueType,
-	handler func(T),
+	handler func(T) AckType,
 ) error {
 	channel, queue, err := createQueue(conn, queueName, queueType)
 	if err != nil {
@@ -67,11 +78,23 @@ func SubscribeJSON[T any](
 			var content T
 			err = json.Unmarshal(item.Body, &content)
 			if err != nil {
-				log.Fatal("Error unmarshalling server message")
+				log.Fatal("Error unmarshalling server message: ", err)
 			}
 
-			handler(content)
-			item.Ack(false)
+			ack := handler(content)
+			switch ack {
+			case Ack:
+				//log.Printf("Message %s acknowledged", item.MessageId)
+				item.Ack(false)
+			case NackRequeue:
+				//log.Printf("Message %s requeued", item.MessageId)
+				item.Nack(false, true)
+			case NackDiscard:
+				//log.Printf("Message %s discarded", item.MessageId)
+				item.Nack(false, false)
+			default:
+				//log.Fatal("Incorrect acknowledgement setting")
+			}
 		}
 	}()
 

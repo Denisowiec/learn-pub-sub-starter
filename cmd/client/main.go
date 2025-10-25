@@ -18,7 +18,7 @@ func declareBindSubscribe[T any](
 	queueName,
 	key string,
 	queueType pubsub.SimpleQueueType,
-	handler func(T),
+	handler func(T) pubsub.AckType,
 ) error {
 	_, _, err := pubsub.DeclareAndBind(
 		conn,
@@ -83,7 +83,14 @@ func main() {
 	armyMoveQName := fmt.Sprintf("%s.%s", routing.ArmyMovesPrefix, username)
 	armyMoveKey := fmt.Sprintf("%s.*", routing.ArmyMovesPrefix)
 
-	err = declareBindSubscribe(rabbitConn, routing.ExchangePerilTopic, armyMoveQName, armyMoveKey, pubsub.Transient, HandlerMove(state))
+	err = declareBindSubscribe(rabbitConn, routing.ExchangePerilTopic, armyMoveQName, armyMoveKey, pubsub.Transient, HandlerMove(state, channel))
+	if err != nil {
+		log.Fatal("Unable to subscribe to a RabbitMQ queue: ", err)
+	}
+	// Subscribing to the war feature
+	warKey := fmt.Sprintf("%s.%s", routing.WarRecognitionsPrefix, username)
+
+	err = declareBindSubscribe(rabbitConn, routing.ExchangePerilTopic, "war", warKey, pubsub.Durable, HandlerWar(state, channel))
 	if err != nil {
 		log.Fatal("Unable to subscribe to a RabbitMQ queue: ", err)
 	}

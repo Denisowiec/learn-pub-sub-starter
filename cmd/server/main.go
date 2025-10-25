@@ -35,7 +35,7 @@ func main() {
 		fmt.Sprintf("%s.*", routing.GameLogSlug),
 		pubsub.Durable)
 	if err != nil {
-		log.Fatal("Couldn't establish a queue for the game logs")
+		log.Fatal("Couldn't establish a queue for the game logs: ", err)
 	}
 
 	gamelogic.PrintServerHelp()
