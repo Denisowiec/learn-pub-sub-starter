@@ -14,7 +14,7 @@ func handlerLogs(msg routing.GameLog) pubsub.AckType {
 	defer fmt.Println("> ")
 	err := gamelogic.WriteLog(msg)
 	if err != nil {
-		log.Printf("Error writing log to disk: ", err)
+		log.Println("Error writing log to disk: ", err)
 		return pubsub.NackRequeue
 	}
 	return pubsub.Ack
