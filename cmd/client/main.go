@@ -5,6 +5,8 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
+	"time"
 
 	"github.com/Denisowiec/learn-pub-sub-starter/internal/gamelogic"
 	"github.com/Denisowiec/learn-pub-sub-starter/internal/pubsub"
@@ -120,7 +122,30 @@ func main() {
 		case "help":
 			gamelogic.PrintClientHelp()
 		case "spam":
-			fmt.Println("Spamming not alowed yet!")
+			if len(input) > 1 {
+				num, err := strconv.Atoi(input[1])
+				if err != nil {
+					fmt.Println("Usage: spam <number>")
+					continue
+				}
+				for i := 0; i < num; i++ {
+					msg := gamelogic.GetMaliciousLog()
+					gamelog := routing.GameLog{
+						Username:    username,
+						CurrentTime: time.Now(),
+						Message:     msg,
+					}
+					err = pubsub.PublishGob(channel, routing.ExchangePerilTopic, fmt.Sprintf("%s.%s", routing.GameLogSlug, username), gamelog)
+					if err != nil {
+						log.Println("Error spamming: ", err)
+						continue
+					}
+				}
+				continue
+			} else {
+				fmt.Println("Usage: spam <number>")
+				continue
+			}
 		case "":
 			continue
 		default:

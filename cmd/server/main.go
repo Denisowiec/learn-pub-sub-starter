@@ -10,6 +10,16 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+func handlerLogs(msg routing.GameLog) pubsub.AckType {
+	defer fmt.Println("> ")
+	err := gamelogic.WriteLog(msg)
+	if err != nil {
+		log.Printf("Error writing log to disk: ", err)
+		return pubsub.NackRequeue
+	}
+	return pubsub.Ack
+}
+
 func main() {
 	log.Println("Starting Peril server...")
 	connAdr := "amqp://guest:guest@localhost:5672/"
@@ -28,14 +38,9 @@ func main() {
 		log.Fatal("Error creating a AMQP channel: ", err)
 	}
 
-	_, _, err = pubsub.DeclareAndBind(
-		rabbitConn,
-		routing.ExchangePerilTopic,
-		routing.GameLogSlug,
-		fmt.Sprintf("%s.*", routing.GameLogSlug),
-		pubsub.Durable)
+	err = pubsub.SubscribeGob(rabbitConn, routing.ExchangePerilTopic, routing.GameLogSlug, fmt.Sprintf("%s.*", routing.GameLogSlug), pubsub.Durable, handlerLogs)
 	if err != nil {
-		log.Fatal("Couldn't establish a queue for the game logs: ", err)
+		log.Fatal("Couldn't establish a subscription for logs: ", err)
 	}
 
 	gamelogic.PrintServerHelp()
